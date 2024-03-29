@@ -18,7 +18,6 @@ public class SourceBean {
     private String d_xgsj;
     private int data_state;
     private String c_baah;
-    private String c_jbfymc;
     private int n_jbfy;
     private String schemaName;
 }

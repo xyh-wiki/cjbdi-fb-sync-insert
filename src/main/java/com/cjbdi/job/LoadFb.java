@@ -12,11 +12,13 @@ import com.zaxxer.hikari.HikariDataSource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.connector.file.sink.FileSink;
+import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.datastream.WindowedStream;
@@ -64,52 +66,20 @@ public class LoadFb {
         //传递全局参数
         env.getConfig().setGlobalJobParameters(parameterTool);
 
-//        initDataSource(parameterTool);
-
         //从指定的kafkaSouse中读取数据
         DataStreamSource<String> kafkaSource = env.fromSource(
                         Config.kafkaSource,
                         WatermarkStrategy.noWatermarks(),
                         "kafka.source")
-                .setParallelism(parameterTool.getInt("source.parallelism", 2));
-
-//        kafkaSource.print("kafka-source");
+                .setParallelism(parameterTool.getInt("source.parallelism", 1));
 
         FileSink<String> fileSink = FileSinkUtils.myFileSink(parameterTool.get("warehouse.path", "hdfs:///data/hive/warehouse/"));
 
-        WindowedStream<Tuple2<String, String>, String, TimeWindow> windowedStream = kafkaSource
-                .flatMap(new FlatMapFunction<String, Tuple2<String, String>>() {
-                    @Override
-                    public void flatMap(String value, Collector<Tuple2<String, String>> out) {
-                        SourceBean sourceBean = JSONObject.parseObject(value, SourceBean.class);
-                        String schemaName = sourceBean.getSchemaName();
-                        String stm = sourceBean.getC_stm();
-                        out.collect(new Tuple2<>(schemaName, stm));
-                    }
-                })
-                .keyBy(new KeySelector<Tuple2<String, String>, String>() {
-                    @Override
-                    public String getKey(Tuple2<String, String> value) {
-                        return value.f0; // 根据 schema 分组
-                    }
-                })
-                .window(TumblingProcessingTimeWindows.of(Time.seconds(5))) // 窗口大小示例
-                .trigger(CountOrTimeTrigger.of(500, 5000));
+        DataStream<String> processedStream = kafkaSource.map(new QueryDatabaseMap(parameterTool)).setParallelism(3);
 
-        SingleOutputStreamOperator<String> streamOperator = windowedStream
-                .process(new PostgreSqlWindowFunction()).setParallelism(3)
-                .flatMap(new FlatMapFunction<JSONArray, String>() {
-                    @Override
-                    public void flatMap(JSONArray objects, Collector<String> collector) throws Exception {
-                        for (int i = 0; i < objects.size(); i++) {
-                            collector.collect(objects.getJSONObject(i).toJSONString());
-                        }
-                    }
-                });
+        processedStream.sinkTo(fileSink);
 
-        streamOperator.sinkTo(fileSink);
-
-        env.execute("法标同步");
+        env.execute("法标增量同步");
     }
-
 }
+

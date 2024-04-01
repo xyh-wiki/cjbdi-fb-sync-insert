@@ -28,6 +28,7 @@ public class PostgreSqlWindowFunction extends ProcessWindowFunction<Tuple2<Strin
     private static final ConcurrentHashMap<String, List<String>> schemaTablesCache = new ConcurrentHashMap<>();
     private static DataSource dataSource;
     private ParameterTool parameterTool;
+
     @Override
     public void open(Configuration parameters) throws Exception {
         parameterTool = (ParameterTool) getRuntimeContext().getExecutionConfig().getGlobalJobParameters();
@@ -78,15 +79,23 @@ public class PostgreSqlWindowFunction extends ProcessWindowFunction<Tuple2<Strin
 
              PreparedStatement stmt = connection.prepareStatement("SELECT * FROM " + schema + "." + table + " WHERE c_stm = ANY (?)")) {
 
+            log.info("实体码数量： {}", cStms.size());
+
             java.sql.Array sqlArray = connection.createArrayOf("text", cStms.toArray(new String[0]));
 
             stmt.setArray(1, sqlArray);
 
+            long start = System.currentTimeMillis();
             rs = stmt.executeQuery();
-
+            long end = System.currentTimeMillis();
+            long consuming = end - start;
+//            if (consuming > 1000) {
+            log.info("===数据库查询表 {} 耗时=== {}ms", schema + "." + table, consuming);
+//            }
             String url = parameterTool.get("postgres.url");
             if (rs != null) {
-                return resultSetToJsonArray(rs, schema, table, url.substring(url.length() - 2));
+                JSONArray jsonArray = resultSetToJsonArray(rs, schema, table, url.substring(url.length() - 2));
+                return jsonArray;
             } else {
                 return null;
             }

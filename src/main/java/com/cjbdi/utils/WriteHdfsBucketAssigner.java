@@ -22,11 +22,12 @@ public class WriteHdfsBucketAssigner implements BucketAssigner<String, String> {
     @Override
     public String getBucketId(String element, Context context) {
 
+
         JSONObject jsonObject = JSON.parseObject(element);
 
         String table = jsonObject.getString("tableName");
         String dt = jsonObject.getString("c_dt");
-        return  "db_fb.db" + "/" + table + "/" + "c_dt=" + dt;
+        return "db_fb.db" + "/" + table + "/" + "c_dt=" + dt;
     }
 
     @Override

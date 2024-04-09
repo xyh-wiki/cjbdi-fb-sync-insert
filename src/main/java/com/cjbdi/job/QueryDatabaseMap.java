@@ -11,11 +11,10 @@ import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.Configuration;
 
 import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
+import java.sql.*;
 import java.text.SimpleDateFormat;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -40,7 +39,7 @@ public class QueryDatabaseMap extends RichMapFunction<String, String> {
         config.setJdbcUrl(parameterTool.get("postgres.url"));
         config.setUsername(parameterTool.get("postgres.username"));
         config.setPassword(parameterTool.get("postgres.password"));
-        config.setMaximumPoolSize(1); // 根据实际情况调整连接池大小
+        config.setMaximumPoolSize(1);
 
         this.dataSource = new HikariDataSource(config);
     }
@@ -68,20 +67,28 @@ public class QueryDatabaseMap extends RichMapFunction<String, String> {
                  PreparedStatement stmt = conn.prepareStatement(query)) {
 
                 stmt.setString(1, cStm);
-                ResultSet rs = stmt.executeQuery();
+                ResultSet rs = null;
+                try {
+                    rs = stmt.executeQuery();
+                } catch (SQLException e) {
+                    log.error("===数据库查询失败=== {}", e.getLocalizedMessage());
+                }
 
                 // 处理查询结果
-                if (rs != null) {
-                    // 此处应实现resultSetToJsonArray，转换结果集为JSONObject或JSONArray
-                    JSONObject jsonObject = resultSetToJsonArray(rs, schemaName, table, parameterTool.get("postgres.url").substring(parameterTool.get("postgres.url").length() - 2), dataState);
-                    // 这里简化处理，假设只关心第一个查询结果
-                    return jsonObject.toJSONString();
+                if (rs.next() && rs != null) {
+
+                    try {
+                        JSONObject jsonObject = resultSetToJsonArray(rs, schemaName, table, parameterTool.get("dbid"), dataState);
+                        return jsonObject.toJSONString();
+                    } catch (Exception e) {
+                        log.error("===查询结果 json 处理失败=== {}", e.getLocalizedMessage());
+                    }
                 }
             } catch (Exception e) {
-                log.error("数据库查询失败", e);
+                log.error("===数据库连接异常=== {}", e);
             }
         }
-        return null;
+        return "";
     }
 
     public static JSONObject resultSetToJsonArray(ResultSet rs, String schema, String table, String dbid, int dataState) {
@@ -90,29 +97,24 @@ public class QueryDatabaseMap extends RichMapFunction<String, String> {
             ResultSetMetaData rsmd = rs.getMetaData();
             int columnCount = rsmd.getColumnCount();
 
-            while (rs.next()) {
-                JSONObject obj = new JSONObject();
-                for (int i = 1; i <= columnCount; i++) {
-                    String columnName = rsmd.getColumnLabel(i);
-                    String columnValue = rs.getString(i);
-                    obj.put(columnName, columnValue);
-                }
-                //主表
-                if (schema.split("_")[1].equals(table.split("_")[1])) {
-                    obj.put("tableName", "t_" + schema);
-                } else {
-                    obj.put("tableName", schema + "_" + table);
-                }
+            JSONObject obj = new JSONObject();
+            for (int i = 1; i <= columnCount; i++) {
+                String columnName = rsmd.getColumnLabel(i);
+                String columnValue = rs.getString(i);
+                obj.put(columnName, columnValue);
+
+                obj.put("tableName", schema + "_" + table);
                 obj.put("c_dt", getCurrentPartition());
-                obj.put("create_time", System.currentTimeMillis());
+                obj.put("update_time", LocalDateTime.now());
                 obj.put("dbid", dbid);
+                obj.put("lsn", null);
                 obj.put("data_state", dataState);
 
                 return obj;
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("查询结果处理失败!!, {}", e.getLocalizedMessage());
         }
         return null;
     }

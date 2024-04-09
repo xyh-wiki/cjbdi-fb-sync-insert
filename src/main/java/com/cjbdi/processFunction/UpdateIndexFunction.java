@@ -33,7 +33,8 @@ public class UpdateIndexFunction extends ProcessFunction<String, Void> {
     @Override
     public void processElement(String value, Context ctx, Collector<Void> out) throws Exception {
         String sourceUrl = parameterTool.get("postgres.url");
-        String schemaName = "index_" + sourceUrl.substring(sourceUrl.length() - 2);
+        String dbid = parameterTool.get("dbid");
+        String schemaName = "index_" + dbid;
 
         JSONObject jsonObject = JSON.parseObject(value);
         int dataState = jsonObject.getInteger("data_state");

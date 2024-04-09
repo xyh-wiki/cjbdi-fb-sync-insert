@@ -5,6 +5,7 @@ import com.cjbdi.config.Config;
 import com.cjbdi.utils.FileSinkUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.connector.file.sink.FileSink;
@@ -49,15 +50,19 @@ public class LoadFb {
 
         FileSink<String> fileSink = FileSinkUtils.myFileSink(parameterTool.get("warehouse.path", "hdfs:///data/hive/warehouse/"));
 
-        DataStream<String> processedStream = kafkaSource.map(new QueryDatabaseMap(parameterTool)).setParallelism(3);
+        DataStream<String> processedStream = kafkaSource
+                .map(new QueryDatabaseMap(parameterTool)).setParallelism(3)
+                .filter(new FilterFunction<String>() {
+                    @Override
+                    public boolean filter(String value) throws Exception {
+                        return !value.isEmpty();
+                    }
+                });
 
         processedStream.sinkTo(fileSink);
 
-        processedStream.print();
-
-        kafkaSource.process(new UpdateIndexFunction());
-
         // 更新postgres索引表
+        kafkaSource.process(new UpdateIndexFunction());
 
         env.execute("法标增量同步");
     }

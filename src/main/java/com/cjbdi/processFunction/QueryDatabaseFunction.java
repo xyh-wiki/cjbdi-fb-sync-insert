@@ -1,37 +1,45 @@
-package com.cjbdi.job;
+package com.cjbdi.processFunction;
 
-import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.cjbdi.bean.SourceBean;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.streaming.api.functions.ProcessFunction;
+import org.apache.flink.util.Collector;
 import org.apache.flink.util.OutputTag;
 
 import javax.sql.DataSource;
 import java.sql.*;
 import java.text.SimpleDateFormat;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
-//        streamOperator.sinkTo(fileSink);
+/**
+ * @ClassName: QueryDatabaseFunction
+ * @Time: 2024/4/9 19:34
+ * @Author: XYH
+ * @Description: TODO
+ */
 @Slf4j
-public class QueryDatabaseMap extends RichMapFunction<String, String> {
+public class QueryDatabaseFunction extends ProcessFunction<String, String> {
 
     private static final ConcurrentHashMap<String, List<String>> schemaTablesCache = new ConcurrentHashMap<>();
+
+    private final OutputTag<String> mainTableTag;
+
 
     private transient DataSource dataSource;
     private ParameterTool parameterTool;
 
-    public QueryDatabaseMap(ParameterTool params) {
+    public QueryDatabaseFunction(ParameterTool params, OutputTag<String> mainTableTag) {
         this.parameterTool = params;
+        this.mainTableTag = mainTableTag;
     }
 
     @Override
@@ -46,52 +54,60 @@ public class QueryDatabaseMap extends RichMapFunction<String, String> {
     }
 
     @Override
-    public String map(String value) {
-        return queryDatabase(value);
-    }
-
-    private String queryDatabase(String value) {
+    public void processElement(String value, ProcessFunction<String, String>.Context ctx, Collector<String> out) throws Exception {
         SourceBean sourceBean = JSONObject.parseObject(value, SourceBean.class);
 
         String cStm = sourceBean.getC_stm();
         String schemaName = sourceBean.getSchemaName();
         int dataState = sourceBean.getData_state();
 
-        // 从缓存中获取或查询数据库以填充schema对应的表名列表
-        List<String> tables = schemaTablesCache.computeIfAbsent(schemaName, this::fetchTablesForSchema);
+        if (dataState == 0) {
+            JSONObject obj = JSONObject.parseObject(value);
+            String name = obj.getString("schemaName");
+            obj.put("tableName", name + "_t_" + name.split("_")[1]);
+            obj.put("c_dt", getCurrentPartition());
+            obj.put("update_time", LocalDateTime.now());
+            obj.put("dbid", parameterTool.get("dbid"));
+            obj.put("lsn", null);
+            obj.put("data_state", dataState);
+            ctx.output(mainTableTag, value);
+            out.collect(obj.toJSONString());
+        } else {
+            // 从缓存中获取或查询数据库以填充schema对应的表名列表
+            List<String> tables = schemaTablesCache.computeIfAbsent(schemaName, this::fetchTablesForSchema);
 
-        JSONObject result = new JSONObject();
-        // 遍历表名，对每个表执行查询
-        for (String table : tables) {
-            String query = "SELECT * FROM " + schemaName + "." + table + " WHERE c_stm = ?";
-            try (Connection conn = dataSource.getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(query)) {
+            // 遍历表名，对每个表执行查询
+            for (String table : tables) {
+                String query = "SELECT * FROM " + schemaName + "." + table + " WHERE c_stm = ?";
+                try (Connection conn = dataSource.getConnection();
+                     PreparedStatement stmt = conn.prepareStatement(query)) {
 
-                stmt.setString(1, cStm);
-                ResultSet rs = null;
-                try {
-                    rs = stmt.executeQuery();
-                } catch (SQLException e) {
-                    log.error("===数据库查询失败=== {}", e.getLocalizedMessage());
-                }
-
-                // 处理查询结果
-                if (rs.next() && rs != null) {
-
+                    stmt.setString(1, cStm);
+                    ResultSet rs = null;
                     try {
-                        JSONObject jsonObject = resultSetToJsonArray(rs, schemaName, table, parameterTool.get("dbid"), dataState);
-                        return jsonObject.toJSONString();
-                    } catch (Exception e) {
-                        log.error("===查询结果 json 处理失败=== {}", e.getLocalizedMessage());
+                        rs = stmt.executeQuery();
+                    } catch (SQLException e) {
+                        log.error("===数据库查询失败=== {}", e.getLocalizedMessage());
                     }
-                } else if (schemaName.split("_")[1].equals(table.split("_")[1])){
-                    return "Exception";
+
+                    // 处理查询结果
+                    while (rs.next()) {
+                        try {
+                            JSONObject jsonObject = resultSetToJsonArray(rs, schemaName, table, parameterTool.get("dbid"), dataState);
+
+                            if (schemaName.split("_")[1].equals(table.split("_")[1])) {
+                                ctx.output(mainTableTag, value);
+                            }
+                            out.collect(jsonObject.toJSONString());
+                        } catch (Exception e) {
+                            log.error("===查询结果 json 处理失败=== {}", e.getLocalizedMessage());
+                        }
+                    }
+                } catch (Exception e) {
+                    log.error("===数据库连接异常=== {}", e);
                 }
-            } catch (Exception e) {
-                log.error("===数据库连接异常=== {}", e);
             }
         }
-        return "";
     }
 
     public static JSONObject resultSetToJsonArray(ResultSet rs, String schema, String table, String dbid, int dataState) {
@@ -104,6 +120,11 @@ public class QueryDatabaseMap extends RichMapFunction<String, String> {
             for (int i = 1; i <= columnCount; i++) {
                 String columnName = rsmd.getColumnLabel(i);
                 String columnValue = rs.getString(i);
+
+                if (("6".equals(String.valueOf(dbid)) || "22".equals(String.valueOf(dbid))) && schema.equals("db_xzys") && table.equals("t_xzys") && "n_jbfymc".equals(columnName) && columnValue != null) {
+                    obj.put("c_jbfymc", columnValue);
+                }
+
                 obj.put(columnName, columnValue);
 
                 obj.put("tableName", schema + "_" + table);

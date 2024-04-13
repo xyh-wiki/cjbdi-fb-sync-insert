@@ -93,6 +93,7 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
                     // 处理查询结果
                     while (rs.next()) {
                         try {
+
                             JSONObject jsonObject = resultSetToJsonArray(rs, schemaName, table, parameterTool.get("dbid"), dataState);
 
                             if (schemaName.split("_")[1].equals(table.split("_")[1])) {
@@ -134,8 +135,9 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
                 obj.put("lsn", null);
                 obj.put("data_state", dataState);
 
-                return obj;
+
             }
+            return obj;
 
         } catch (Exception e) {
             log.error("查询结果处理失败!!, {}", e.getLocalizedMessage());

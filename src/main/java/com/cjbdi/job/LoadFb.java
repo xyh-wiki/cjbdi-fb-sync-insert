@@ -71,7 +71,7 @@ public class LoadFb {
 
         queryStream.sinkTo(fileSink).name("hdfs写入数据");
 
-        exceptionStream.process(new UpdateIndexFunction()).name("更新索引表");
+//        exceptionStream.process(new UpdateIndexFunction()).name("更新索引表");
 
         env.execute("法标增量同步-" + parameterTool.get("dbid"));
     }

@@ -12,6 +12,6 @@ public class JSONDemo {
         jsonObject.put("a", 1);
         jsonObject.put("a", 2);
 
-        System.out.println(jsonObject.toJSONString());
+        System.out.println(jsonObject.getString("ff"));
     }
 }

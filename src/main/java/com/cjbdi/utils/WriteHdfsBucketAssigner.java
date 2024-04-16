@@ -26,8 +26,8 @@ public class WriteHdfsBucketAssigner implements BucketAssigner<String, String> {
         JSONObject jsonObject = JSON.parseObject(element);
 
         String table = jsonObject.getString("tableName");
-        String dt = jsonObject.getString("c_dt");
-        return "db_fb.db" + "/" + table + "/" + "c_dt=" + dt;
+        String dt = jsonObject.getString("dt");
+        return "db_ods15.db" + "/" + table + "/" + "dt=" + dt;
     }
 
     @Override

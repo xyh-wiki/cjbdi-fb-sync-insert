@@ -25,7 +25,7 @@ import org.apache.flink.util.OutputTag;
  * @ClassName: LoadFb
  * @Time: 2024/3/28 18:51
  * @Author: XYH
- * @Description: TODO
+ * @Description: 法标库增量同步, 数据库查询， hdfs写入
  */
 @Slf4j
 public class LoadFb {
@@ -37,8 +37,6 @@ public class LoadFb {
         System.setProperty("HADOOP_USER_NAME", "root");
 
         ParameterTool parameterTool = ParameterTool.fromPropertiesFile(args[0]);
-
-        // 创建测流输出标签
 
         //获取全局参数
         Configuration configuration = new Configuration();
@@ -71,7 +69,7 @@ public class LoadFb {
 
         queryStream.sinkTo(fileSink).name("hdfs写入数据");
 
-//        exceptionStream.process(new UpdateIndexFunction()).name("更新索引表");
+        exceptionStream.process(new UpdateIndexFunction()).name("更新索引表");
 
         env.execute("法标增量同步-" + parameterTool.get("dbid"));
     }

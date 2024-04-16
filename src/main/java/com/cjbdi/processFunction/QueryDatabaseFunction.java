@@ -15,9 +15,8 @@ import javax.sql.DataSource;
 import java.sql.*;
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
+import java.util.*;
 import java.util.Date;
-import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -33,9 +32,10 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
 
     private final OutputTag<String> mainTableTag;
 
-
     private transient DataSource dataSource;
     private ParameterTool parameterTool;
+    private Set<String> uniqueSchemaTableNames;
+
 
     public QueryDatabaseFunction(ParameterTool params, OutputTag<String> mainTableTag) {
         this.parameterTool = params;
@@ -51,6 +51,9 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
         config.setMaximumPoolSize(1);
 
         this.dataSource = new HikariDataSource(config);
+
+        // 获取非规范从表表名和schema名
+        this.uniqueSchemaTableNames = fetchUniqueSchemaTableNames();
     }
 
     @Override
@@ -65,7 +68,7 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
             JSONObject obj = JSONObject.parseObject(value);
             String name = obj.getString("schemaName");
             obj.put("tableName", name + "_t_" + name.split("_")[1]);
-            obj.put("c_dt", getCurrentPartition());
+            obj.put("dt", getCurrentPartition());
             obj.put("update_time", LocalDateTime.now());
             obj.put("dbid", parameterTool.get("dbid"));
             obj.put("lsn", null);
@@ -78,7 +81,15 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
 
             // 遍历表名，对每个表执行查询
             for (String table : tables) {
-                String query = "SELECT * FROM " + schemaName + "." + table + " WHERE c_stm = ?";
+                String query;
+
+                // 主表或者非规范从表（从表名称不是c_stm_schema）
+                if (uniqueSchemaTableNames.contains(schemaName + "." + table)) {
+                    query = "SELECT * FROM " + schemaName + "." + table + " WHERE c_stm = ?";
+                } else {
+                    query = "SELECT * FROM " + schemaName + "." + table + " WHERE c_stm_" + schemaName.split("_")[1] + "  = ?";
+                }
+
                 try (Connection conn = dataSource.getConnection();
                      PreparedStatement stmt = conn.prepareStatement(query)) {
 
@@ -87,7 +98,7 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
                     try {
                         rs = stmt.executeQuery();
                     } catch (SQLException e) {
-                        log.error("===数据库查询失败=== {}", e.getLocalizedMessage());
+                        log.error("数据库查询失败>> {}", e.getLocalizedMessage());
                     }
 
                     // 处理查询结果
@@ -101,11 +112,11 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
                             }
                             out.collect(jsonObject.toJSONString());
                         } catch (Exception e) {
-                            log.error("===查询结果 json 处理失败=== {}", e.getLocalizedMessage());
+                            log.error("查询结果 json 处理失败>> {}", e.getLocalizedMessage());
                         }
                     }
                 } catch (Exception e) {
-                    log.error("===数据库连接异常=== {}", e);
+                    log.error("数据库连接异常>> {}", e);
                 }
             }
         }
@@ -129,18 +140,18 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
                 obj.put(columnName, columnValue);
 
                 obj.put("tableName", schema + "_" + table);
-                obj.put("c_dt", getCurrentPartition());
+                obj.put("dt", getCurrentPartition());
                 obj.put("update_time", LocalDateTime.now());
                 obj.put("dbid", dbid);
                 obj.put("lsn", null);
-                obj.put("data_state", dataState);
+                obj.put("data_state", 1);
 
 
             }
             return obj;
 
         } catch (Exception e) {
-            log.error("查询结果处理失败!!, {}", e.getLocalizedMessage());
+            log.error("查询结果处理失败!!>> {}", e.getLocalizedMessage());
         }
         return null;
     }
@@ -166,8 +177,34 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
                 tables.add(rs.getString("table_name"));
             }
         } catch (Exception e) {
-            log.error("schema {} 获取表失败！！{}: " + schema, e);
+            log.error("schema {} 获取表失败!!>> {} " + schema, e);
         }
         return tables;
     }
+
+    private Set<String> fetchUniqueSchemaTableNames() {
+        Set<String> schemaTableNames = new HashSet<>();
+
+        try (Connection connection = dataSource.getConnection();
+             Statement stmt = connection.createStatement()) {
+
+            ResultSet rs = stmt.executeQuery(
+                    "SELECT table_schema, table_name FROM information_schema.columns " +
+                            "WHERE column_name LIKE 'c_stm%' " +
+                            "GROUP BY table_schema, table_name " +
+                            "HAVING COUNT(*) = 1");
+
+            while (rs.next()) {
+                String schemaName = rs.getString("table_schema");
+                String tableName = rs.getString("table_name");
+                String schemaTableName = schemaName + "." + tableName;
+                schemaTableNames.add(schemaTableName);
+            }
+        } catch (SQLException e) {
+            log.error("特殊 schema 查询失败>> ", e.getLocalizedMessage());
+        }
+
+        return schemaTableNames;
+    }
+
 }

@@ -58,6 +58,9 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
 
     @Override
     public void processElement(String value, ProcessFunction<String, String>.Context ctx, Collector<String> out) throws Exception {
+
+        String currentPartition = getCurrentPartition();
+
         SourceBean sourceBean = JSONObject.parseObject(value, SourceBean.class);
 
         String cStm = sourceBean.getC_stm();
@@ -68,7 +71,7 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
             JSONObject obj = JSONObject.parseObject(value);
             String name = obj.getString("schemaName");
             obj.put("tableName", name + "_t_" + name.split("_")[1]);
-            obj.put("dt", getCurrentPartition());
+            obj.put("dt", currentPartition);
             obj.put("update_time", LocalDateTime.now());
             obj.put("dbid", parameterTool.get("dbid"));
             obj.put("lsn", null);

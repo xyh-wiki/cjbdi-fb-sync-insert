@@ -62,14 +62,14 @@ public class LoadFb {
 
         SingleOutputStreamOperator<String> queryStream = kafkaSource
                 .process(new QueryDatabaseFunction(parameterTool, exceptionDataStream))
-                .setParallelism(3)
+                .setParallelism(parameterTool.getInt("database.connections", 3))
                 .name("法标库查询拉取数据");
 
         SideOutputDataStream<String> exceptionStream = queryStream.getSideOutput(exceptionDataStream);
 
         queryStream.sinkTo(fileSink).name("hdfs写入数据");
 
-        exceptionStream.process(new UpdateIndexFunction()).name("更新索引表");
+        exceptionStream.process(new UpdateIndexFunction()).name("更新索引表").setParallelism(2);
 
         env.execute("法标增量同步-" + parameterTool.get("dbid"));
     }

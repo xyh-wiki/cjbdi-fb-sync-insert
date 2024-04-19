@@ -17,8 +17,8 @@ public class FileSinkUtils {
     public static FileSink<String> myFileSink(String path) {
         //自定义滚动策略
         DefaultRollingPolicy<String, String> rollPolicy = DefaultRollingPolicy.builder()
-                .withRolloverInterval(Duration.ofMinutes(10))
-                .withInactivityInterval(Duration.ofMinutes(10))
+                .withRolloverInterval(Duration.ofMinutes(120))
+                .withInactivityInterval(Duration.ofMinutes(120))
                 .withMaxPartSize(MemorySize.ofMebiBytes(1024 * 1024 * 128))
                 .build();
 

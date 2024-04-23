@@ -67,9 +67,9 @@ public class LoadFb {
 
         SideOutputDataStream<String> exceptionStream = queryStream.getSideOutput(exceptionDataStream);
 
-        queryStream.sinkTo(fileSink).name("hdfs写入数据");
+        queryStream.sinkTo(fileSink).name("hdfs写入数据").setParallelism(parameterTool.getInt("hdfs.sink.parallelism", 2));
 
-        exceptionStream.process(new UpdateIndexFunction()).name("更新索引表").setParallelism(2);
+        exceptionStream.process(new UpdateIndexFunction()).name("更新索引表").setParallelism(parameterTool.getInt("index.sink.parallelism", 6));
 
         env.execute("法标增量同步-" + parameterTool.get("dbid"));
     }

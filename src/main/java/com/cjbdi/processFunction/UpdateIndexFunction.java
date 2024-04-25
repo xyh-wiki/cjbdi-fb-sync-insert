@@ -44,8 +44,16 @@ public class UpdateIndexFunction extends ProcessFunction<String, Void> {
         switch (dataState) {
             case 1: // 新增
                 String insertSql = String.format(
-                    "INSERT INTO %s (c_stm, d_xgsj, c_baah, n_jbfy, create_time, update_time, data_state) " +
-                    "VALUES (?, ?, ?, ?, NOW(), NOW(), 1) ON CONFLICT (c_stm) DO NOTHING", indexTableName);
+                        "INSERT INTO %s (c_stm, d_xgsj, c_baah, n_jbfy, create_time, update_time, data_state) " +
+                                "VALUES (?, ?, ?, ?, NOW(), NOW(), 1) " +
+                                "ON CONFLICT (c_stm) " +
+                                "DO UPDATE SET " +
+                                "c_stm = EXCLUDED.c_stm, " +
+                                "d_xgsj = EXCLUDED.d_xgsj, " +
+                                "c_baah = EXCLUDED.c_baah, " +
+                                "n_jbfy = EXCLUDED.n_jbfy, " +
+                                "update_time = NOW(), " +
+                                "data_state = 1", indexTableName);
                 try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
                     pstmt.setString(1, jsonObject.getString("c_stm"));
                     pstmt.setString(2, jsonObject.containsKey("d_xgsj") ? jsonObject.getString("d_xgsj") : null);

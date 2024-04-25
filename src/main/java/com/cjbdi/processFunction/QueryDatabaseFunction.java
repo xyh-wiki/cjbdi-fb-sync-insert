@@ -32,7 +32,7 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
 
     private final OutputTag<String> mainTableTag;
 
-    private transient DataSource dataSource;
+    private transient HikariDataSource dataSource;
     private ParameterTool parameterTool;
     private Set<String> uniqueSchemaTableNames;
 
@@ -49,13 +49,26 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
         config.setUsername(parameterTool.get("postgres.username"));
         config.setPassword(parameterTool.get("postgres.password"));
         config.setMaximumPoolSize(1);
+        config.setMinimumIdle(0);
+
+        config.setIdleTimeout(600000);  // 设置空闲连接的超时时间为 60 秒
+        config.setMaxLifetime(1800000);  // 设置连接的最大生命周期为 30 分钟
+
 
         this.dataSource = new HikariDataSource(config);
 
         // 获取非规范从表表名和schema名
         this.uniqueSchemaTableNames = fetchUniqueSchemaTableNames();
+
     }
 
+    @Override
+    public void close() throws Exception {
+        if (dataSource != null) {
+            dataSource.close();
+        }
+        super.close();
+    }
     @Override
     public void processElement(String value, ProcessFunction<String, String>.Context ctx, Collector<String> out) throws Exception {
 
@@ -66,6 +79,9 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
         String cStm = sourceBean.getC_stm();
         String schemaName = sourceBean.getSchemaName();
         int dataState = sourceBean.getData_state();
+        String dXgsj = sourceBean.getD_xgsj();
+
+
 
         if (dataState == 0) {
             JSONObject obj = JSONObject.parseObject(value);

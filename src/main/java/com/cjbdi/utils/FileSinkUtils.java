@@ -19,7 +19,7 @@ public class FileSinkUtils {
         DefaultRollingPolicy<String, String> rollPolicy = DefaultRollingPolicy.builder()
                 .withRolloverInterval(Duration.ofMinutes(120))
                 .withInactivityInterval(Duration.ofMinutes(120))
-                .withMaxPartSize(MemorySize.ofMebiBytes(1024 * 1024 * 128))
+                .withMaxPartSize(MemorySize.ofMebiBytes(122))
                 .build();
 
         return FileSink.forRowFormat(new Path(path), new SimpleStringEncoder<String>("UTF-8"))

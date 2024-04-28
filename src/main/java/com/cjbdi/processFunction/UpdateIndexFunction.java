@@ -56,7 +56,18 @@ public class UpdateIndexFunction extends ProcessFunction<String, Void> {
                                 "data_state = 1", indexTableName);
                 try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
                     pstmt.setString(1, jsonObject.getString("c_stm"));
-                    pstmt.setString(2, jsonObject.containsKey("d_xgsj") ? jsonObject.getString("d_xgsj") : null);
+
+                    String d_xgsjValue = jsonObject.containsKey("d_xgsj") ? jsonObject.getString("d_xgsj") : null;
+
+                    System.out.println(d_xgsjValue);
+                    Timestamp timestamp = null;
+
+                    if (d_xgsjValue != null && !d_xgsjValue.isEmpty()) {
+                        timestamp = Timestamp.valueOf(d_xgsjValue);
+                    }
+
+                    pstmt.setTimestamp(2, timestamp);
+
                     pstmt.setString(3, jsonObject.containsKey("c_baah") ? jsonObject.getString("c_baah") : null);
                     if (jsonObject.containsKey("n_jbfy")) {
                         pstmt.setInt(4, jsonObject.getInteger("n_jbfy"));
@@ -78,8 +89,18 @@ public class UpdateIndexFunction extends ProcessFunction<String, Void> {
                     "UPDATE %s SET d_xgsj = ?, c_baah = ?, n_jbfy = ?, update_time = NOW(), data_state = 2 WHERE c_stm = ?",
                     indexTableName);
                 try (PreparedStatement pstmt = conn.prepareStatement(updateSql)) {
-                    pstmt.setString(1, jsonObject.containsKey("d_xgsj") ? jsonObject.getString("d_xgsj") : null);
+
+                    String d_xgsjValue = jsonObject.containsKey("d_xgsj") ? jsonObject.getString("d_xgsj") : null;
+
+                    Timestamp timestamp = null;
+
+                    if (d_xgsjValue != null && !d_xgsjValue.isEmpty()) {
+                        timestamp = Timestamp.valueOf(d_xgsjValue);
+                    }
+
+                    pstmt.setTimestamp(1, timestamp);
                     pstmt.setString(2, jsonObject.containsKey("c_baah") ? jsonObject.getString("c_baah") : null);
+
                     if (jsonObject.containsKey("n_jbfy")) {
                         pstmt.setInt(3, jsonObject.getInteger("n_jbfy"));
                     } else {

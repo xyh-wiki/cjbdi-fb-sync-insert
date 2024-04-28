@@ -4,6 +4,7 @@ import org.apache.flink.api.common.serialization.SimpleStringEncoder;
 import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.connector.file.sink.FileSink;
 import org.apache.flink.core.fs.Path;
+import org.apache.flink.streaming.api.functions.sink.filesystem.rollingpolicies.CheckpointRollingPolicy;
 import org.apache.flink.streaming.api.functions.sink.filesystem.rollingpolicies.DefaultRollingPolicy;
 
 import java.time.Duration;
@@ -17,8 +18,8 @@ public class FileSinkUtils {
     public static FileSink<String> myFileSink(String path) {
         //自定义滚动策略
         DefaultRollingPolicy<String, String> rollPolicy = DefaultRollingPolicy.builder()
-                .withRolloverInterval(Duration.ofMinutes(120))
-                .withInactivityInterval(Duration.ofMinutes(120))
+                .withRolloverInterval(Duration.ofMinutes(60))
+                .withInactivityInterval(Duration.ofMinutes(60))
                 .withMaxPartSize(MemorySize.ofMebiBytes(122))
                 .build();
 

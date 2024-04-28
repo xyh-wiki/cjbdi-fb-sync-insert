@@ -37,7 +37,7 @@ public class Config {
         env.getCheckpointConfig().setMinPauseBetweenCheckpoints(1 * 1000);
         env.getCheckpointConfig().setMaxConcurrentCheckpoints(1);
         env.getCheckpointConfig().setTolerableCheckpointFailureNumber(3);
-        env.setRestartStrategy(RestartStrategies.fixedDelayRestart(20, Time.seconds(10L)));
+        env.setRestartStrategy(RestartStrategies.fixedDelayRestart(3, Time.seconds(10L)));
         env.getCheckpointConfig().setCheckpointStorage(new FileSystemCheckpointStorage(parameterTool.getRequired("checkpoint.dir")));
         env.getCheckpointConfig().setExternalizedCheckpointCleanup(CheckpointConfig.ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION);
 

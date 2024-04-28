@@ -9,7 +9,7 @@ import java.nio.charset.StandardCharsets;
 /**
  * @Author: XYH
  * @Date: 2022/9/26 3:09 PM
- * @Description: 判断hbase中rowkey是否已存在
+ * @Description: hdfs 写入序列化
  */
 public class WriteHdfsStringSerializer implements SimpleVersionedSerializer<String> {
     @Override

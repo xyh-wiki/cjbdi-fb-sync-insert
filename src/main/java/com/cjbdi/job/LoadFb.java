@@ -1,9 +1,11 @@
 package com.cjbdi.job;
 
 import com.alibaba.fastjson.JSONObject;
+import com.cjbdi.config.ConfigUtils;
 import com.cjbdi.processFunction.*;
 import com.cjbdi.config.Config;
 import com.cjbdi.utils.FileSinkUtils;
+import com.cjbdi.utils.YamlUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.FilterFunction;
@@ -21,6 +23,8 @@ import org.apache.flink.streaming.api.functions.co.CoProcessFunction;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.OutputTag;
 
+import java.util.Map;
+
 /**
  * @ClassName: LoadFb
  * @Time: 2024/3/28 18:51
@@ -34,9 +38,12 @@ public class LoadFb {
 
     public static void main(String[] args) throws Exception {
 
-        System.setProperty("HADOOP_USER_NAME", "root");
-
         ParameterTool parameterTool = ParameterTool.fromPropertiesFile(args[0]);
+
+        Map<String, Object> config = YamlUtils.loadYamlFromEnv("CONFIG_FILE");
+        ConfigUtils.setConfiguration(config);
+
+        System.setProperty("HADOOP_USER_NAME", ConfigUtils.getHadoopUsername("root"));
 
         //获取全局参数
         Configuration configuration = new Configuration();

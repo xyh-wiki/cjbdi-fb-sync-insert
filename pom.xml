@@ -19,7 +19,9 @@
         <hikaricp.version>4.0.3</hikaricp.version>
         <postgresql.version>42.3.3</postgresql.version>
         <hadoop.version>3.3.2</hadoop.version>
+        <yaml.version>2.2</yaml.version>
         <log4j2.version>2.20.0</log4j2.version>
+        <junit.version>5.10.2</junit.version>
 
     </properties>
 
@@ -104,6 +106,19 @@
             <version>3.6.1</version>
         </dependency>
 
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+            <version>${yaml.version}</version>
+        </dependency>
+
+        <!-- https://mvnrepository.com/artifact/org.junit.jupiter/junit-jupiter-api -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
 
 
     </dependencies>

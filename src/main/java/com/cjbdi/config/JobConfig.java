@@ -27,10 +27,10 @@ public class JobConfig {
         env.enableCheckpointing(5 * 60 * 1000);
         env.setStateBackend(new HashMapStateBackend());
         env.getCheckpointConfig().setCheckpointTimeout(6 * 1000 * 1000);
-        env.getCheckpointConfig().setMinPauseBetweenCheckpoints(1 * 1000);
+        env.getCheckpointConfig().setMinPauseBetweenCheckpoints(1000);
         env.getCheckpointConfig().setMaxConcurrentCheckpoints(1);
         env.getCheckpointConfig().setTolerableCheckpointFailureNumber(3);
-        env.setRestartStrategy(RestartStrategies.fixedDelayRestart(3, Time.seconds(10L)));
+        env.setRestartStrategy(RestartStrategies.fixedDelayRestart(10, Time.seconds(10L)));
         env.getCheckpointConfig().setCheckpointStorage(new FileSystemCheckpointStorage(YamlManager.getCheckpointDir()));
         env.getCheckpointConfig().setExternalizedCheckpointCleanup(CheckpointConfig.ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION);
     }

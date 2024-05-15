@@ -30,7 +30,7 @@ public class YamlUtils {
             InputStream inputStream = new FileInputStream(filePath);
             return yaml.load(inputStream);
         } catch (FileNotFoundException e) {
-            log.error("配置文件加载失败>>{} ", e.getMessage());
+            log.error("配置文件加载失败>> {} ", e.getMessage());
             return null;
         }
     }

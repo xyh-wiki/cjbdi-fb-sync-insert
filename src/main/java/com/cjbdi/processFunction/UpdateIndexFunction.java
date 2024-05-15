@@ -3,6 +3,7 @@ package com.cjbdi.processFunction;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.cjbdi.config.YamlManager;
+import com.cjbdi.utils.YamlUtils;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
@@ -13,6 +14,7 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.Timestamp;
 import java.sql.Types;
+import java.util.Map;
 
 public class UpdateIndexFunction extends ProcessFunction<String, Void> {
     private transient Connection conn;

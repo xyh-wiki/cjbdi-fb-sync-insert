@@ -27,7 +27,7 @@ public class YamlManager {
         public static final String POSTGRES_SOURCE_URL = "postgres.source.url";
         public static final String POSTGRES_SOURCE_USERNAME = "postgres.source.username";
         public static final String POSTGRES_SOURCE_PASSWORD = "postgres.source.password";
-        public static final String POSTGRES_SOURCE_DBID = "postgres.source.dbid";
+        public static final String POSTGRES_SOURCE_DBID = "postgres.source.dbId";
         public static final String POSTGRES_SOURCE_CONNECTIONS = "postgres.source.connections";
         public static final String POSTGRES_INDEX_URL = "postgres.index.url";
         public static final String POSTGRES_INDEX_USERNAME = "postgres.index.username";

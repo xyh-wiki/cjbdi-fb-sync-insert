@@ -3,6 +3,7 @@ package com.cjbdi.processFunction;
 import com.alibaba.fastjson.JSONObject;
 import com.cjbdi.bean.SourceBean;
 import com.cjbdi.config.YamlManager;
+import com.cjbdi.utils.YamlUtils;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import lombok.extern.slf4j.Slf4j;
@@ -39,19 +40,24 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
     private static String indexUrl;
     private static String indexUsername;
     private static String indexPassword;
+    private final Map<String, Object> yamlConfig;
 
 
-    public QueryDatabaseFunction(OutputTag<String> indexTag) {
+    public QueryDatabaseFunction(OutputTag<String> indexTag, Map<String, Object> yamlConfig) {
         this.mainTableTag = indexTag;
+        this.yamlConfig = yamlConfig;
     }
 
     @Override
     public void open(Configuration parameters) {
 
+        YamlManager.setConfiguration(yamlConfig);
         dbId = YamlManager.getPostgresSourceDbId();
         indexUrl = YamlManager.getPostgresIndexUrl();
         indexUsername = YamlManager.getPostgresIndexUsername();
         indexPassword = YamlManager.getPostgresIndexPassword();
+
+        System.out.println("dbId>> " + dbId);
 
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl(YamlManager.getPostgresSourceUrl());

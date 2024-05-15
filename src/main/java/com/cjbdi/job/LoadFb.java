@@ -7,6 +7,7 @@ import com.cjbdi.utils.FileSinkUtils;
 import com.cjbdi.utils.YamlUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.connector.file.sink.FileSink;
 import org.apache.flink.streaming.api.datastream.*;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -27,7 +28,11 @@ public class LoadFb {
 
     public static void main(String[] args) throws Exception {
         // 加载配置文件
-        loadConfiguration();
+//        Map<String, Object> yamlConfig = YamlUtils.loadYaml(args[0]);
+
+        Map<String, Object> yamlConfig = YamlUtils.loadYamlFromEnv("CONFIG_PATH");
+
+        YamlManager.setConfiguration(yamlConfig);
 
         // 获取 Flink 执行环境
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
@@ -42,15 +47,15 @@ public class LoadFb {
         DataStream<String> kafkaSource = readDataFromKafka(env);
 
         // 数据处理及写入到 HDFS
-        processAndWriteToHDFS(kafkaSource);
+        processAndWriteToHDFS(kafkaSource, yamlConfig);
 
         // 执行任务
         executeJob(env);
     }
 
-    private static void loadConfiguration() {
-        Map<String, Object> config = YamlUtils.loadYamlFromEnv("CONFIG_PATH");
-        YamlManager.setConfiguration(config);
+    private static void loadConfiguration(String yamlPath) {
+        Map<String, Object> yamlConfig = YamlUtils.loadYaml(yamlPath);
+        YamlManager.setConfiguration(yamlConfig);
     }
 
     private static DataStream<String> readDataFromKafka(StreamExecutionEnvironment env) {
@@ -62,11 +67,11 @@ public class LoadFb {
         ).setParallelism(YamlManager.getJobSourceParallelism(1));
     }
 
-    private static void processAndWriteToHDFS(DataStream<String> kafkaSource) {
+    private static void processAndWriteToHDFS(DataStream<String> kafkaSource, Map<String, Object> yamlPath) {
         FileSink<String> fileSink = FileSinkUtils.myFileSink(YamlManager.getWarehousePath("hdfs:///data/hive/warehouse/"));
 
         SingleOutputStreamOperator<String> queryStream = kafkaSource
-                .process(new QueryDatabaseFunction(INDEX_TAG))
+                .process(new QueryDatabaseFunction(INDEX_TAG, yamlPath))
                 .setParallelism(YamlManager.getPostgresSourceConnections(3))
                 .name("法标库查询拉取数据");
 

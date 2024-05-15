@@ -5,7 +5,7 @@ kafka:
   server: 192.168.50.37:9092
   topic: t-stm
   input:
-    groupId: s-20
+    groupId: s-21
 
 warehouse:
   path: "hdfs://192.168.50.37:8020/user/hive/warehouse"
@@ -17,7 +17,7 @@ postgres:
     url: "jdbc:postgresql://192.168.50.37:5432/fb15_00"
     username: "postgres"
     password: "121019"
-    dbid: "00"
+    dbId: "00"
   index:
     url: "jdbc:postgresql://192.168.50.37:5432/db_index"
     username: "postgres"

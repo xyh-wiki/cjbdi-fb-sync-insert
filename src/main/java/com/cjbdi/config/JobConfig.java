@@ -15,22 +15,15 @@ import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 
 import java.util.Properties;
 
-
 /**
  * @Author: XYH
  * @Date: 2021/12/3 1:12 下午
- * @Description: flink 运行环境和参数配置
+ * @Description: Flink 运行环境和参数配置
  */
-public class Config {
+public class JobConfig {
 
-    //运行环境设置
-    public static KafkaSource<String> kafkaSource;
-    public static KafkaSink<String> kafkaEsSink;
-
-    public void flinkEnv(ParameterTool parameterTool, StreamExecutionEnvironment env) {
-
-        env.getConfig().setGlobalJobParameters(parameterTool);
-
+    // 设置 Flink 运行环境
+    public static void configureFlinkEnvironment(StreamExecutionEnvironment env) {
         env.enableCheckpointing(5 * 60 * 1000);
         env.setStateBackend(new HashMapStateBackend());
         env.getCheckpointConfig().setCheckpointTimeout(6 * 1000 * 1000);
@@ -38,22 +31,12 @@ public class Config {
         env.getCheckpointConfig().setMaxConcurrentCheckpoints(1);
         env.getCheckpointConfig().setTolerableCheckpointFailureNumber(3);
         env.setRestartStrategy(RestartStrategies.fixedDelayRestart(3, Time.seconds(10L)));
-        env.getCheckpointConfig().setCheckpointStorage(new FileSystemCheckpointStorage(parameterTool.getRequired("checkpoint.dir")));
+        env.getCheckpointConfig().setCheckpointStorage(new FileSystemCheckpointStorage(YamlManager.getCheckpointDir()));
         env.getCheckpointConfig().setExternalizedCheckpointCleanup(CheckpointConfig.ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION);
-
-        kafkaSource =  KafkaSource.<String>builder()
-                .setBootstrapServers(parameterTool.get("kafka.server"))
-                .setTopics(parameterTool.get("kafka.topic"))
-                .setGroupId(parameterTool.get("kafka.input.groupId"))
-                .setProperties(properties)
-                .setStartingOffsets(OffsetsInitializer.committedOffsets(OffsetResetStrategy.EARLIEST))
-                .setValueOnlyDeserializer(new SimpleStringSchema())
-                .build();
-
     }
 
-    public static Properties properties = new Properties();
-    public static void kafkaConfig() {
+    // Kafka 配置
+    public static Properties configureKafka() {
         Properties properties = new Properties();
         properties.setProperty("request.timeout.ms", "214748364");
         properties.setProperty("metadata.fetch.timeout.ms", "214748364");
@@ -61,6 +44,22 @@ public class Config {
         properties.setProperty("retries", "20");
         properties.setProperty("linger.ms", "300");
         properties.setProperty("log.level", "warn");
+        return properties;
+    }
 
+    // 创建 Kafka Source
+    public static KafkaSource<String> createKafkaSource(Properties properties) {
+        return KafkaSource.<String>builder()
+                .setBootstrapServers(YamlManager.getKafkaServer())
+                .setTopics(YamlManager.getKafkaTopic())
+                .setGroupId(YamlManager.getKafkaGroupId())
+                .setProperties(properties)
+                .setStartingOffsets(OffsetsInitializer.committedOffsets(OffsetResetStrategy.EARLIEST))
+                .setValueOnlyDeserializer(new SimpleStringSchema())
+                .build();
+    }
+
+    public static void setHadoopUsername() {
+        System.setProperty("HADOOP_USER_NAME", YamlManager.getWarehouseUsername("root"));
     }
 }

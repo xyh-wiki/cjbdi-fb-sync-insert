@@ -2,6 +2,7 @@ package com.cjbdi.processFunction;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
+import com.cjbdi.config.YamlManager;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
@@ -15,26 +16,25 @@ import java.sql.Types;
 
 public class UpdateIndexFunction extends ProcessFunction<String, Void> {
     private transient Connection conn;
-    private ParameterTool parameterTool;
+    private static String dbId;
 
     @Override
     public void open(Configuration parameters) throws Exception {
         super.open(parameters);
-        parameterTool = (ParameterTool) getRuntimeContext().getExecutionConfig().getGlobalJobParameters();
 
         Class.forName("org.postgresql.Driver");
-        String url = parameterTool.get("postgres.index.url");
-        String username = parameterTool.get("postgres.index.username");
-        String password = parameterTool.get("postgres.index.password");
+        String url = YamlManager.getPostgresIndexUrl();
+        String username = YamlManager.getPostgresIndexUsername();
+        String password = YamlManager.getPostgresIndexPassword();
+        dbId = YamlManager.getPostgresSourceDbId();
 
         conn = DriverManager.getConnection(url, username, password);
     }
 
     @Override
     public void processElement(String value, Context ctx, Collector<Void> out) throws Exception {
-        String sourceUrl = parameterTool.get("postgres.url");
-        String dbid = parameterTool.get("dbid");
-        String schemaName = "index_" + dbid;
+
+        String schemaName = "index_" + dbId;
 
         JSONObject jsonObject = JSON.parseObject(value);
         int dataState = jsonObject.getInteger("data_state");
@@ -59,7 +59,6 @@ public class UpdateIndexFunction extends ProcessFunction<String, Void> {
 
                     String d_xgsjValue = jsonObject.containsKey("d_xgsj") ? jsonObject.getString("d_xgsj") : null;
 
-                    System.out.println(d_xgsjValue);
                     Timestamp timestamp = null;
 
                     if (d_xgsjValue != null && !d_xgsjValue.isEmpty()) {

@@ -1,29 +1,19 @@
 package com.cjbdi.job;
 
-import com.alibaba.fastjson.JSONObject;
-import com.cjbdi.config.ConfigUtils;
+import com.cjbdi.config.YamlManager;
 import com.cjbdi.processFunction.*;
-import com.cjbdi.config.Config;
+import com.cjbdi.config.JobConfig;
 import com.cjbdi.utils.FileSinkUtils;
 import com.cjbdi.utils.YamlUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.api.common.functions.FilterFunction;
-import org.apache.flink.api.common.functions.FlatMapFunction;
-import org.apache.flink.api.common.state.ValueState;
-import org.apache.flink.api.common.state.ValueStateDescriptor;
-import org.apache.flink.api.common.typeinfo.Types;
-import org.apache.flink.api.java.functions.KeySelector;
-import org.apache.flink.api.java.utils.ParameterTool;
-import org.apache.flink.configuration.Configuration;
 import org.apache.flink.connector.file.sink.FileSink;
 import org.apache.flink.streaming.api.datastream.*;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.co.CoProcessFunction;
-import org.apache.flink.util.Collector;
 import org.apache.flink.util.OutputTag;
 
 import java.util.Map;
+import java.util.Properties;
 
 /**
  * @ClassName: LoadFb
@@ -33,52 +23,62 @@ import java.util.Map;
  */
 @Slf4j
 public class LoadFb {
-    private static final OutputTag<String> exceptionDataStream = new OutputTag<String>("exception-data") {
-    };
+    private static final OutputTag<String> INDEX_TAG = new OutputTag<String>("indexTag") {};
 
     public static void main(String[] args) throws Exception {
+        // 加载配置文件
+        loadConfiguration();
 
-        ParameterTool parameterTool = ParameterTool.fromPropertiesFile(args[0]);
+        // 获取 Flink 执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
-        Map<String, Object> config = YamlUtils.loadYamlFromEnv("CONFIG_FILE");
-        ConfigUtils.setConfiguration(config);
+        // 设置 Hadoop 用户名
+        JobConfig.setHadoopUsername();
 
-        System.setProperty("HADOOP_USER_NAME", ConfigUtils.getHadoopUsername("root"));
+        // 配置 Flink 环境
+        JobConfig.configureFlinkEnvironment(env);
 
-        //获取全局参数
-        Configuration configuration = new Configuration();
+        // 从 Kafka 中读取数据
+        DataStream<String> kafkaSource = readDataFromKafka(env);
 
-        //flink执行环境
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment(configuration);
+        // 数据处理及写入到 HDFS
+        processAndWriteToHDFS(kafkaSource);
 
-        //flink 相关配置
-        Config flinkConfig = new Config();
-        flinkConfig.flinkEnv(parameterTool, env);
+        // 执行任务
+        executeJob(env);
+    }
 
-        //传递全局参数
-        env.getConfig().setGlobalJobParameters(parameterTool);
+    private static void loadConfiguration() {
+        Map<String, Object> config = YamlUtils.loadYamlFromEnv("CONFIG_PATH");
+        YamlManager.setConfiguration(config);
+    }
 
-        //从指定的kafkaSouse中读取数据
-        DataStreamSource<String> kafkaSource = env.fromSource(
-                        Config.kafkaSource,
-                        WatermarkStrategy.noWatermarks(),
-                        "kafka 读取数据")
-                .setParallelism(parameterTool.getInt("source.parallelism", 1));
+    private static DataStream<String> readDataFromKafka(StreamExecutionEnvironment env) {
+        Properties kafkaProperties = JobConfig.configureKafka();
+        return env.fromSource(
+                JobConfig.createKafkaSource(kafkaProperties),
+                WatermarkStrategy.noWatermarks(),
+                "kafka 读取数据"
+        ).setParallelism(YamlManager.getJobSourceParallelism(1));
+    }
 
-        FileSink<String> fileSink = FileSinkUtils.myFileSink(parameterTool.get("warehouse.path", "hdfs:///data/hive/warehouse/"));
+    private static void processAndWriteToHDFS(DataStream<String> kafkaSource) {
+        FileSink<String> fileSink = FileSinkUtils.myFileSink(YamlManager.getWarehousePath("hdfs:///data/hive/warehouse/"));
 
         SingleOutputStreamOperator<String> queryStream = kafkaSource
-                .process(new QueryDatabaseFunction(parameterTool, exceptionDataStream))
-                .setParallelism(parameterTool.getInt("database.connections", 3))
+                .process(new QueryDatabaseFunction(INDEX_TAG))
+                .setParallelism(YamlManager.getPostgresSourceConnections(3))
                 .name("法标库查询拉取数据");
 
-        SideOutputDataStream<String> exceptionStream = queryStream.getSideOutput(exceptionDataStream);
+        SideOutputDataStream<String> indexStream = queryStream.getSideOutput(INDEX_TAG);
 
-        queryStream.sinkTo(fileSink).name("hdfs写入数据").setParallelism(parameterTool.getInt("hdfs.sink.parallelism", 2));
+        queryStream.sinkTo(fileSink).name("hdfs写入数据").setParallelism(YamlManager.getJobHdfsSinkParallelism(1));
 
-        exceptionStream.process(new UpdateIndexFunction()).name("更新索引表").setParallelism(parameterTool.getInt("index.sink.parallelism", 6));
+        indexStream.process(new UpdateIndexFunction()).name("更新索引表").setParallelism(YamlManager.getJobIndexSinkParallelism(1));
+    }
 
-        env.execute("法标增量同步-" + parameterTool.get("dbid"));
+    private static void executeJob(StreamExecutionEnvironment env) throws Exception {
+        env.execute("法标增量同步-" + YamlManager.getPostgresSourceDbId());
     }
 }
 

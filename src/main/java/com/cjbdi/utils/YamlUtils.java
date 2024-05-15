@@ -11,7 +11,7 @@ import java.util.Map;
 /**
  * @Author: XYH
  * @Date: 2024/5/14 23:20
- * @Description: TODO
+ * @Description: Yaml 工具类
  */
 @Slf4j
 public class YamlUtils {

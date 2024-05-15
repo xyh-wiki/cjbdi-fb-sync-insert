@@ -8,7 +8,7 @@ import lombok.NoArgsConstructor;
  * @ClassName: SourceBean
  * @Time: 2024/3/28 19:11
  * @Author: XYH
- * @Description: TODO
+ * @Description: kafka 数据源对应的bean
  */
 @AllArgsConstructor
 @NoArgsConstructor

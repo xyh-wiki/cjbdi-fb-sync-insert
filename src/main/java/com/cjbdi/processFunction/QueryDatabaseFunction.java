@@ -2,6 +2,7 @@ package com.cjbdi.processFunction;
 
 import com.alibaba.fastjson.JSONObject;
 import com.cjbdi.bean.SourceBean;
+import com.cjbdi.config.YamlManager;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import lombok.extern.slf4j.Slf4j;
@@ -33,21 +34,29 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
     private final OutputTag<String> mainTableTag;
 
     private transient HikariDataSource dataSource;
-    private ParameterTool parameterTool;
     private Set<String> uniqueSchemaTableNames;
+    private static String dbId;
+    private static String indexUrl;
+    private static String indexUsername;
+    private static String indexPassword;
 
 
-    public QueryDatabaseFunction(ParameterTool params, OutputTag<String> mainTableTag) {
-        this.parameterTool = params;
-        this.mainTableTag = mainTableTag;
+    public QueryDatabaseFunction(OutputTag<String> indexTag) {
+        this.mainTableTag = indexTag;
     }
 
     @Override
     public void open(Configuration parameters) {
+
+        dbId = YamlManager.getPostgresSourceDbId();
+        indexUrl = YamlManager.getPostgresIndexUrl();
+        indexUsername = YamlManager.getPostgresIndexUsername();
+        indexPassword = YamlManager.getPostgresIndexPassword();
+
         HikariConfig config = new HikariConfig();
-        config.setJdbcUrl(parameterTool.get("postgres.url"));
-        config.setUsername(parameterTool.get("postgres.username"));
-        config.setPassword(parameterTool.get("postgres.password"));
+        config.setJdbcUrl(YamlManager.getPostgresSourceUrl());
+        config.setUsername(YamlManager.getPostgresSourceUsername());
+        config.setPassword(YamlManager.getPostgresSourcePassword());
         config.setMaximumPoolSize(1);
         config.setMinimumIdle(0);
 
@@ -69,6 +78,7 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
         }
         super.close();
     }
+
     @Override
     public void processElement(String value, ProcessFunction<String, String>.Context ctx, Collector<String> out) throws Exception {
 
@@ -79,9 +89,6 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
         String cStm = sourceBean.getC_stm();
         String schemaName = sourceBean.getSchemaName();
         int dataState = sourceBean.getData_state();
-        String dXgsj = sourceBean.getD_xgsj();
-
-
 
         if (dataState == 0) {
             JSONObject obj = JSONObject.parseObject(value);
@@ -89,7 +96,7 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
             obj.put("tableName", name + "_t_" + name.split("_")[1]);
             obj.put("dt", currentPartition);
             obj.put("update_time", LocalDateTime.now());
-            obj.put("dbid", parameterTool.get("dbid"));
+            obj.put("dbid", dbId);
             obj.put("lsn", null);
             obj.put("data_state", dataState);
             ctx.output(mainTableTag, value);
@@ -102,7 +109,7 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
             for (String table : tables) {
                 String query;
 
-                // 主表或者非规范从表（从表名称不是c_stm_schema）
+                // 主表或者非规范从表（从表关联键名称不是c_stm_schema）
                 if (uniqueSchemaTableNames.contains(schemaName + "." + table)) {
                     query = "SELECT * FROM " + schemaName + "." + table + " WHERE c_stm = ?";
                 } else {
@@ -118,13 +125,28 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
                         rs = stmt.executeQuery();
                     } catch (SQLException e) {
                         log.error("数据库查询失败>> {}", e.getLocalizedMessage());
+                        // 插入异常日志到数据库表
+                        try {
+                            Connection indexConn = DriverManager.getConnection(indexUrl, indexUsername, indexPassword);
+                            PreparedStatement pstmt = conn.prepareStatement("INSERT INTO index_log.t_log (dbId, tableName, c_stm, log_message, job_mode, c_dt, create_time) VALUES (?, ?, ?, ?, 'increment', ?, now())");
+                            pstmt.setString(1, dbId);
+                            pstmt.setString(2, schemaName + "." + table);
+                            pstmt.setString(3, cStm);
+                            pstmt.setString(4, "法标库查询异常>> " + e.getMessage());
+                            pstmt.setString(5, currentPartition);
+                            pstmt.executeUpdate();
+                            pstmt.close();
+                            indexConn.close();
+                        } catch (SQLException ex) {
+                            log.error("插入日志表时发生数据库错误", ex);
+                        }
                     }
 
                     // 处理查询结果
                     while (rs.next()) {
                         try {
 
-                            JSONObject jsonObject = resultSetToJsonArray(rs, schemaName, table, parameterTool.get("dbid"), dataState);
+                            JSONObject jsonObject = resultSetToJsonArray(rs, schemaName, table, dbId, dataState);
 
                             if (schemaName.split("_")[1].equals(table.split("_")[1])) {
                                 ctx.output(mainTableTag, value);
@@ -132,47 +154,66 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
                             out.collect(jsonObject.toJSONString());
                         } catch (Exception e) {
                             log.error("查询结果 json 处理失败>> {}", e.getLocalizedMessage());
+                            try {
+                                Connection indexConn = DriverManager.getConnection(indexUrl, indexUsername, indexPassword);
+                                PreparedStatement pstmt = conn.prepareStatement("INSERT INTO index_log.t_log (dbId, tableName, c_stm, log_message, job_mode, c_dt, create_time) VALUES (?, ?, ?, ?, 'increment', ?, now())");
+                                pstmt.setString(1, dbId);
+                                pstmt.setString(2, schemaName + "." + table);
+                                pstmt.setString(3, cStm);
+                                pstmt.setString(4, "查询结果 json 处理失败>> " + e.getMessage());
+                                pstmt.setString(5, currentPartition);
+                                pstmt.executeUpdate();
+                                pstmt.close();
+                                indexConn.close();
+                            } catch (SQLException ex) {
+                                log.error("插入日志表时发生数据库错误>> {}", ex.getLocalizedMessage());
+                            }
                         }
                     }
                 } catch (Exception e) {
-                    log.error("数据库连接异常>> {}", e);
+                    log.error("法标库连接异常>> {}", e.getLocalizedMessage());
+                    try {
+                        Connection indexConn = DriverManager.getConnection(indexUrl, indexUsername, indexPassword);
+                        PreparedStatement pstmt = indexConn.prepareStatement("INSERT INTO index_log.t_log (dbId, tableName, c_stm, log_message, job_mode, c_dt, create_time) VALUES (?, ?, ?, ?, 'increment', ?, now())");
+                        pstmt.setString(1, dbId);
+                        pstmt.setString(2, schemaName + "." + table);
+                        pstmt.setString(3, cStm);
+                        pstmt.setString(4, "法标库连接异常>> " + e.getMessage());
+                        pstmt.setString(5, currentPartition);
+                        pstmt.executeUpdate();
+                        pstmt.close();
+                        indexConn.close();
+                    } catch (SQLException ex) {
+                        log.error("插入日志表时发生数据库错误>> {}", ex.getLocalizedMessage());
+                    }
                 }
             }
         }
     }
 
-    public static JSONObject resultSetToJsonArray(ResultSet rs, String schema, String table, String dbid, int dataState) {
+    public static JSONObject resultSetToJsonArray(ResultSet rs, String schema, String table, String dbId, int dataState) throws SQLException {
 
-        try {
-            ResultSetMetaData rsmd = rs.getMetaData();
-            int columnCount = rsmd.getColumnCount();
+        ResultSetMetaData rsmd = rs.getMetaData();
+        int columnCount = rsmd.getColumnCount();
 
-            JSONObject obj = new JSONObject();
-            for (int i = 1; i <= columnCount; i++) {
-                String columnName = rsmd.getColumnLabel(i);
-                String columnValue = rs.getString(i);
+        JSONObject obj = new JSONObject();
+        for (int i = 1; i <= columnCount; i++) {
+            String columnName = rsmd.getColumnLabel(i);
+            String columnValue = rs.getString(i);
 
-                if (("6".equals(String.valueOf(dbid)) || "22".equals(String.valueOf(dbid))) && schema.equals("db_xzys") && table.equals("t_xzys") && "n_jbfymc".equals(columnName) && columnValue != null) {
-                    obj.put("c_jbfymc", columnValue);
-                }
-
-                obj.put(columnName, columnValue);
-
-                obj.put("tableName", schema + "_" + table);
-                obj.put("dt", getCurrentPartition());
-                obj.put("update_time", LocalDateTime.now());
-                obj.put("dbid", dbid);
-                obj.put("lsn", null);
-                obj.put("data_state", 1);
-
-
+            if (("6".equals(String.valueOf(dbId)) || "22".equals(String.valueOf(dbId))) && schema.equals("db_xzys") && table.equals("t_xzys") && "n_jbfymc".equals(columnName) && columnValue != null) {
+                obj.put("c_jbfymc", columnValue);
             }
-            return obj;
 
-        } catch (Exception e) {
-            log.error("查询结果处理失败!!>> {}", e.getLocalizedMessage());
+            obj.put(columnName, columnValue);
+            obj.put("tableName", schema + "_" + table);
+            obj.put("dt", getCurrentPartition());
+            obj.put("update_time", LocalDateTime.now());
+            obj.put("dbid", dbId);
+            obj.put("lsn", null);
+            obj.put("data_state", 1);
         }
-        return null;
+        return obj;
     }
 
     private static String getCurrentPartition() {
@@ -196,11 +237,27 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
                 tables.add(rs.getString("table_name"));
             }
         } catch (Exception e) {
-            log.error("schema {} 获取表失败!!>> {} " + schema, e);
+            log.error("schema {} 获取表失败!!>> {} ", schema, e);
+
+            try {
+                Connection indexConn = DriverManager.getConnection(indexUrl, indexUsername, indexPassword);
+                PreparedStatement pstmt = indexConn.prepareStatement("INSERT INTO index_log.t_log (dbId, tableName, c_stm, log_message, job_mode, c_dt, create_time) VALUES (?, ?, ?, ?, 'increment', ?, now())");
+                pstmt.setString(1, dbId);
+                pstmt.setString(2, schema);
+                pstmt.setString(3, null);
+                pstmt.setString(4, "schema 获取表失败!!>> " + e.getMessage());
+                pstmt.setString(5, getCurrentPartition());
+                pstmt.executeUpdate();
+                pstmt.close();
+                indexConn.close();
+            } catch (SQLException ex) {
+                log.error("插入日志表时发生数据库错误>> {}", ex.getLocalizedMessage());
+            }
         }
         return tables;
     }
 
+    // 筛选从表中关联键不为 c_stm_schema 的从表
     private Set<String> fetchUniqueSchemaTableNames() {
         Set<String> schemaTableNames = new HashSet<>();
 
@@ -220,7 +277,22 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
                 schemaTableNames.add(schemaTableName);
             }
         } catch (SQLException e) {
-            log.error("特殊 schema 查询失败>> ", e.getLocalizedMessage());
+            log.error("特殊 schema 查询失败>> {}", e.getLocalizedMessage());
+
+            try {
+                Connection indexConn = DriverManager.getConnection(indexUrl, indexUsername, indexPassword);
+                PreparedStatement pstmt = indexConn.prepareStatement("INSERT INTO index_log.t_log (dbId, tableName, c_stm, log_message, job_mode, c_dt, create_time) VALUES (?, ?, ?, ?, 'increment', ?, now())");
+                pstmt.setString(1, dbId);
+                pstmt.setString(2, null);
+                pstmt.setString(3, null);
+                pstmt.setString(4, "特殊 schema 查询失败>> " + e.getLocalizedMessage());
+                pstmt.setString(5, getCurrentPartition());
+                pstmt.executeUpdate();
+                pstmt.close();
+                indexConn.close();
+            } catch (SQLException ex) {
+                log.error("插入日志表时发生数据库错误>> {}", ex.getLocalizedMessage());
+            }
         }
 
         return schemaTableNames;

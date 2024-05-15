@@ -8,6 +8,7 @@ package com.cjbdi.utils;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
+import com.cjbdi.config.YamlManager;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 import org.apache.flink.streaming.api.functions.sink.filesystem.BucketAssigner;
 
@@ -27,7 +28,8 @@ public class WriteHdfsBucketAssigner implements BucketAssigner<String, String> {
 
         String table = jsonObject.getString("tableName");
         String dt = jsonObject.getString("dt");
-        return "db_ods15.db" + "/" + table + "/" + "dt=" + dt;
+        String database = YamlManager.getWarehouseDatabase("db_ods15.db");
+        return database + "/" + table + "/" + "dt=" + dt;
     }
 
     @Override

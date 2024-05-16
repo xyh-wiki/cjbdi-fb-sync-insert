@@ -2,7 +2,6 @@ package com.cjbdi.processFunction;
 
 import com.alibaba.fastjson.JSONObject;
 import com.cjbdi.bean.SourceBean;
-import com.cjbdi.config.YamlManager;
 import com.cjbdi.utils.YamlUtils;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -35,34 +34,26 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
     private final OutputTag<String> mainTableTag;
 
     private transient HikariDataSource dataSource;
+    private ParameterTool parameterTool;
     private Set<String> uniqueSchemaTableNames;
     private static String dbId;
     private static String indexUrl;
     private static String indexUsername;
     private static String indexPassword;
-    private final Map<String, Object> yamlConfig;
 
 
-    public QueryDatabaseFunction(OutputTag<String> indexTag, Map<String, Object> yamlConfig) {
-        this.mainTableTag = indexTag;
-        this.yamlConfig = yamlConfig;
+    public QueryDatabaseFunction(OutputTag<String> mainTableTag) {
+        this.mainTableTag = mainTableTag;
     }
 
     @Override
-    public void open(Configuration parameters) {
+    public void open(Configuration parameters) throws Exception {
 
-        YamlManager.setConfiguration(yamlConfig);
-        dbId = YamlManager.getPostgresSourceDbId();
-        indexUrl = YamlManager.getPostgresIndexUrl();
-        indexUsername = YamlManager.getPostgresIndexUsername();
-        indexPassword = YamlManager.getPostgresIndexPassword();
-
-        System.out.println("dbId>> " + dbId);
-
+        parameterTool = (ParameterTool) getRuntimeContext().getExecutionConfig().getGlobalJobParameters();
         HikariConfig config = new HikariConfig();
-        config.setJdbcUrl(YamlManager.getPostgresSourceUrl());
-        config.setUsername(YamlManager.getPostgresSourceUsername());
-        config.setPassword(YamlManager.getPostgresSourcePassword());
+        config.setJdbcUrl(parameterTool.get("postgres.url"));
+        config.setUsername(parameterTool.get("postgres.username"));
+        config.setPassword(parameterTool.get("postgres.password"));
         config.setMaximumPoolSize(1);
         config.setMinimumIdle(0);
 
@@ -102,7 +93,7 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
             obj.put("tableName", name + "_t_" + name.split("_")[1]);
             obj.put("dt", currentPartition);
             obj.put("update_time", LocalDateTime.now());
-            obj.put("dbid", dbId);
+            obj.put("dbid", parameterTool.get("dbid"));
             obj.put("lsn", null);
             obj.put("data_state", dataState);
             ctx.output(mainTableTag, value);
@@ -152,7 +143,7 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
                     while (rs.next()) {
                         try {
 
-                            JSONObject jsonObject = resultSetToJsonArray(rs, schemaName, table, dbId, dataState);
+                            JSONObject jsonObject = resultSetToJsonArray(rs, schemaName, table, parameterTool.get("dbid"), dataState);
 
                             if (schemaName.split("_")[1].equals(table.split("_")[1])) {
                                 ctx.output(mainTableTag, value);

@@ -2,8 +2,9 @@ package com.cjbdi.processFunction;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
-import com.cjbdi.config.YamlManager;
 import com.cjbdi.utils.YamlUtils;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
@@ -17,26 +18,34 @@ import java.sql.Types;
 import java.util.Map;
 
 public class UpdateIndexFunction extends ProcessFunction<String, Void> {
-    private transient Connection conn;
-    private static String dbId;
+    private ParameterTool parameterTool;
+    private transient HikariDataSource dataSource;
+
 
     @Override
     public void open(Configuration parameters) throws Exception {
-        super.open(parameters);
+        parameterTool = (ParameterTool) getRuntimeContext().getExecutionConfig().getGlobalJobParameters();
 
         Class.forName("org.postgresql.Driver");
-        String url = YamlManager.getPostgresIndexUrl();
-        String username = YamlManager.getPostgresIndexUsername();
-        String password = YamlManager.getPostgresIndexPassword();
-        dbId = YamlManager.getPostgresSourceDbId();
+        HikariConfig config = new HikariConfig();
+        config.setJdbcUrl(parameterTool.get("postgres.index.url"));
+        config.setUsername(parameterTool.get("postgres.index.username"));
+        config.setPassword(parameterTool.get("postgres.index.password"));
+        config.setMaximumPoolSize(1);
+        config.setMinimumIdle(0);
 
-        conn = DriverManager.getConnection(url, username, password);
+        config.setIdleTimeout(600000);  // 设置空闲连接的超时时间为 60 秒
+        config.setMaxLifetime(1800000);  // 设置连接的最大生命周期为 30 分钟
+
+
+        this.dataSource = new HikariDataSource(config);
     }
 
     @Override
     public void processElement(String value, Context ctx, Collector<Void> out) throws Exception {
-
-        String schemaName = "index_" + dbId;
+        String sourceUrl = parameterTool.get("postgres.url");
+        String dbid = parameterTool.get("dbid");
+        String schemaName = "index_" + dbid;
 
         JSONObject jsonObject = JSON.parseObject(value);
         int dataState = jsonObject.getInteger("data_state");
@@ -56,7 +65,7 @@ public class UpdateIndexFunction extends ProcessFunction<String, Void> {
                                 "n_jbfy = EXCLUDED.n_jbfy, " +
                                 "update_time = NOW(), " +
                                 "data_state = 1", indexTableName);
-                try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
+                try (Connection conn = dataSource.getConnection(); PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
                     pstmt.setString(1, jsonObject.getString("c_stm"));
 
                     String d_xgsjValue = jsonObject.containsKey("d_xgsj") ? jsonObject.getString("d_xgsj") : null;
@@ -80,16 +89,16 @@ public class UpdateIndexFunction extends ProcessFunction<String, Void> {
                 break;
             case 0: // 删除
                 String deleteSql = String.format("UPDATE %s SET update_time = NOW(), data_state = 0 WHERE c_stm = ?", indexTableName);
-                try (PreparedStatement pstmt = conn.prepareStatement(deleteSql)) {
+                try (Connection conn = dataSource.getConnection(); PreparedStatement pstmt = conn.prepareStatement(deleteSql)) {
                     pstmt.setString(1, jsonObject.getString("c_stm"));
                     pstmt.executeUpdate();
                 }
                 break;
             case 2: // 修改
                 String updateSql = String.format(
-                    "UPDATE %s SET d_xgsj = ?, c_baah = ?, n_jbfy = ?, update_time = NOW(), data_state = 2 WHERE c_stm = ?",
-                    indexTableName);
-                try (PreparedStatement pstmt = conn.prepareStatement(updateSql)) {
+                        "UPDATE %s SET d_xgsj = ?, c_baah = ?, n_jbfy = ?, update_time = NOW(), data_state = 2 WHERE c_stm = ?",
+                        indexTableName);
+                try (Connection conn = dataSource.getConnection(); PreparedStatement pstmt = conn.prepareStatement(updateSql)) {
 
                     String d_xgsjValue = jsonObject.containsKey("d_xgsj") ? jsonObject.getString("d_xgsj") : null;
 
@@ -111,13 +120,6 @@ public class UpdateIndexFunction extends ProcessFunction<String, Void> {
                     pstmt.executeUpdate();
                 }
                 break;
-        }
-    }
-
-    @Override
-    public void close() throws Exception {
-        if (conn != null) {
-            conn.close();
         }
     }
 }

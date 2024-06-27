@@ -102,7 +102,31 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
             // 从缓存中获取或查询数据库以填充schema对应的表名列表
             List<String> tables = schemaTablesCache.computeIfAbsent(schemaName, this::fetchTablesForSchema);
 
-            // 遍历表名，对每个表执行查询
+            String ajzlx = schemaName.split("_")[1];
+            // 查询并获取文书视图数据
+            String wsQuery = "SELECT * FROM db_fyygx.v_" + ajzlx + " WHERE c_stm_" + ajzlx + " = ?";
+
+            try (Connection conn = dataSource.getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(wsQuery)) {
+                stmt.setString(1, cStm);
+
+                ResultSet rs = null;
+                try {
+                    rs = stmt.executeQuery();
+
+                    while (rs.next()) {
+                        JSONObject jsonObject = resultSetToJsonArray(rs, schemaName, "t_" + ajzlx + "ws", parameterTool.get("dbid"), dataState);
+                        out.collect(jsonObject.toJSONString());
+                    }
+                } catch (SQLException e) {
+                    log.error("视图 db_fyygx.v_" + ajzlx + "ws" + "不存在!!!");
+                }
+
+
+            }
+
+
+                // 遍历表名，对每个表执行查询
             for (String table : tables) {
                 String query;
 
@@ -110,7 +134,7 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
                 if (uniqueSchemaTableNames.contains(schemaName + "." + table)) {
                     query = "SELECT * FROM " + schemaName + "." + table + " WHERE c_stm = ?";
                 } else {
-                    query = "SELECT * FROM " + schemaName + "." + table + " WHERE c_stm_" + schemaName.split("_")[1] + "  = ?";
+                    query = "SELECT * FROM " + schemaName + "." + table + " WHERE c_stm_" + ajzlx + "  = ?";
                 }
 
                 try (Connection conn = dataSource.getConnection();
@@ -145,7 +169,7 @@ public class QueryDatabaseFunction extends ProcessFunction<String, String> {
 
                             JSONObject jsonObject = resultSetToJsonArray(rs, schemaName, table, parameterTool.get("dbid"), dataState);
 
-                            if (schemaName.split("_")[1].equals(table.split("_")[1])) {
+                            if (ajzlx.equals(table.split("_")[1])) {
                                 ctx.output(mainTableTag, value);
                             }
                             out.collect(jsonObject.toJSONString());
